@@ -19,31 +19,65 @@
   </p>
   <p class="date">Scala '17 <!-- October 22, 2017 --></p>
 </div>
-<div id="dangers-of-mutability" class="slide section level1">
-<h1>Dangers of mutability</h1>
-<p><strong>Data race</strong> occur when there are two concurrent accesses to the <em>same</em> memory location with:</p>
+<div id="danger-of-shared-mutability" class="slide section level1">
+<h1>Danger of shared mutability</h1>
+<p><strong>Data races</strong> may occur if there are &gt;2 concurrent accesses to the <em>same</em> memory location with:</p>
 <ol style="list-style-type: decimal">
 <li>at least one being a <em>write</em>,</li>
 <li>at least one being <em>non-atomic</em></li>
 </ol>
 <ul>
-<li><p>even in sequential programs; e.g., <em>iterator invalidation</em> if both:</p>
+<li><p><strong>undefined behavior</strong> in sequential programs; e.g., <em>iterator invalidation</em> if simultaneously:</p>
 <ul>
 <li>iterating over a data structure</li>
 <li><p>mutating the data structure</p>
-<pre><code>val xs = scala.collection.mutable.MutableList(1)
-for (x &lt;- xs) {
-    println(x)
-    if (x &lt; 10) xs += x + 1
+<pre><code>val nats = scala.collection.mutable.MutableList(1)
+for (nat &lt;- nats) {
+    println(nat)
+    if (nat &lt; 10) nats += nat + 1
 }  // prints 1 and 2 (not 1 only, not 1 through 10)</code></pre></li>
 </ul></li>
 </ul>
+<!--
+
+@0:15-0:20
+A program that concurrently accesses a memory location is prone to a _data race_
+unless it performs _no_ writes,
+or a _single_ write provided that all accesses to that location are atomic.
+
++0:10-13
+Conversely, there is a race condition as soon as there are
+two accesses to the same location
+that include a _write_ and a non-atomic (unsynchronized) read or write.
+-->
+<!-- As another example, consider iteration invalidation which occurs if -->
+<!-- a data structure is being iterated over and mutated _at the same time_. -->
+<!--
+@5
+And such pattern is dangerous in sequential programs, too.
+
+@12-14  
+In this snippet, we have a mutable list of natural numbers,
+initially containing just the number 1, that we iterating over
+_while at the same time_ appending the successor.
+
+@30-40
+You might expect that the traversed (printed) numbers would be 1
+(if the traversal ignore the newly appended),
+or 1 through 10 (if it takes them into account).
+However, running this snippet prints 1 and 2 -- which is totally unexpected.
+...
+If this was C, the program would probably crash (due to _a dangling pointer_),
+and Java would throw an exception.
+
+-->
 </div>
 <div class="slide section level1">
 
-<h2 id="pragmatic-solutions-to-mutability-problems">Pragmatic solutions to mutability problems</h2>
+<h2 id="solutions-to-mutability-problems">Solutions to mutability problems</h2>
+<p>Pragmatic approaches:</p>
 <ul>
-<li><strong>disallow</strong> mutability or aliasing altogether
+<li><strong>disallow</strong> mutability
 <ul>
 <li>purely functional (e.g., Haskell)</li>
 </ul></li>
@@ -52,10 +86,25 @@ for (x &lt;- xs) {
 <li>copy on write (e.g., R)</li>
 </ul></li>
 </ul>
+<p>Related work:</p>
+<ul>
+<li>ownership type systems (theoretical)</li>
+<li>LaCasa &amp; P. Haller's PhD thesis on actors &amp; unique ownership (Scala)</li>
+<li>borrow checker (Rust, <strong>practical</strong>)</li>
+</ul>
+<!--
+
+Two extreme options are to disallow mutability or , like
+Haskell (a purely functional languages).
+or in R. R as soon as you want to mutate something and it is shared, it will be copied.
+
+-->
 </div>
 <div class="slide section level1">
 
 <h2 id="static-prevention-of-mutability-rust">Static prevention of mutability (Rust)</h2>
+<!-- Rust - they have done something right,
+let's try to reuse some of ideas -->
 <p>Rust's <em>borrow checker</em> enforces that a resource is referred to by either:</p>
 <ul>
 <li>one or more immutable references (<code>&amp;T</code>); <strong>or</strong></li>
@@ -66,19 +115,8 @@ for (x &lt;- xs) {
 <li>A live reference can be (safely) dereferenced</li>
 <li>A (reachable) mutable reference can be <em>reborrowed</em> for a shorter lifetime:
 <ul>
-<li>through a <strong>function call</strong> or a nested scope</li>
-<li>it is <strong><em>not</em> live</strong> at the call site or outer scope</li>
-</ul></li>
-</ul>
-</div>
-<div id="motivation" class="slide section level1">
-<h1>Motivation</h1>
-<ul>
-<li>Add Rust semantics, desirable because of <em>ScalaNative</em> (explicit memory management)</li>
-<li>Scala (and most other languages) are flow-<em>insensitive</em></li>
-<li>Rust's type system is <strong>flow-<em>sensitive</em></strong>
-<ul>
-<li>an expression may have different types depending on control flow</li>
+<li>through a <strong>function call</strong></li>
+<li>it is <strong><em>not</em> live</strong> at the call site until the function returns</li>
 </ul></li>
 </ul>
 </div>
@@ -118,69 +156,80 @@ for (x &lt;- xs) {
 |     }
 |     - mutable borrow ends here</code></pre>
 </div>
-<div id="goals" class="slide section level1">
-<h1>Goals</h1>
+<div id="motivation-and-goals" class="slide section level1">
+<h1>Motivation and Goals</h1>
 <ul>
-<li>Model borrowing and alias control from Rust in Scala</li>
-<li>Avoid direct translation of Rust's typing rules (keep the language simple)</li>
-<li>Remove the dependence on flow sensitivity
+<li>Model borrowing and alias control from Rust in Scala
 <ul>
-<li>introduce auxiliary scopes whenever flow-dependent information changes</li>
-<li>hide monadic or continuation passing style (CPS) from the user via macros <!-- a compiler plug-in --></li>
+<li>desirable because of <strong>ScalaNative</strong> (explicit memory management)</li>
+</ul></li>
+<li>Avoid direct translation of Rust's typing rules
+<ul>
+<li>keep the language simple</li>
 </ul></li>
 </ul>
-<p>E.g., translate Rust code:</p>
+<p> <br />
+<em>Non-goals</em>:</p>
+<ul>
+<li>hide monadic or continuation passing style (CPS) from the user
+<ul>
+<li>doable via a compiler plug-in and macros</li>
+</ul></li>
+<li><em>fully</em> model (<em>transfer</em> of) ownership</li>
+</ul>
+</div>
+<div id="key-idea" class="slide section level1">
+<h1>Key idea</h1>
+<ul>
+<li>Remove the dependence on flow sensitivity
+<ul>
+<li>an expression may have different types depending on control flow</li>
+<li>introduce an auxiliary scope whenever flow-dependent information changes</li>
+</ul></li>
+</ul>
+<p>E.g., translate Rust code (<strong>flow-<em>sensitive</em></strong>):</p>
 <pre><code>let y = &amp;mut x;
 ...</code></pre>
-<p>to Scala code:</p>
+<p>to Scala code (<strong>flow-<em>insensitive</em></strong>):</p>
 <pre><code>bindMut(x) { y =&gt; ... }</code></pre>
-</div>
-<div class="slide section level1">
-
-<h2 id="how-to-statically-enforce-it">How to statically enforce it?</h2>
-<ol style="list-style-type: decimal">
-<li>lexical scoping of variables</li>
-<li>no creation of mutable variables out of other variables (and vice versa)</li>
-<li>no assignments on immutable variables</li>
-</ol>
 </div>
 <div id="type-checking" class="slide section level1">
 <h1>Type-checking</h1>
-<p>Example #1:</p>
-<pre><code>bindMut(42) { mut =&gt;
-  bindImm(mut) { imm =&gt; ... }  // error
-  bindMut(mut) { mutAlias =&gt; ... }  // error
-  val mutAlias = mut  // error
-  mut.value = 0  // ok
-}</code></pre>
-<p>Example #2:</p>
 <pre><code>bindImm(1) { imm =&gt;
   bindImm(imm) { immAlias =&gt; ... }  // ok
-  bindMut(imm) { mutAlias =&gt; ... }  // error
-  imm.value = 0  // error
-}</code></pre>
+  bindMut(imm) { mutAlias =&gt; ... }  // error (2a)
+  imm.value = 0  // error (3)
+}
+bindMut(42) { mut =&gt;
+  bindImm(mut) { imm =&gt; ... }  // error (2b)
+  bindMut(mut) { mutAlias =&gt; ... }  // error (2)
+  val mutAlias = mut  // error (2)
+  mut.value = 0  // ok
+  mut  // error (1)
+} mut.value = 1  // error (1)</code></pre>
+<p><strong>Rules</strong>:</p>
+<ol style="list-style-type: decimal">
+<li>no escaped variables (<em>lexical</em> scoping)</li>
+<li>no creation of <em>mutable</em> variables out of other variables (and vice versa)</li>
+<li>no assignments on <em>immutable</em> variables</li>
+</ol>
 </div>
 <div id="overall-design" class="slide section level1">
 <h1>Overall design</h1>
 <ul>
-<li><em>library</em> level
+<li><em>library</em> level - enforces the previous rules
 <ul>
-<li>enforces the rules but still provides escape hatches
-<ul>
-<li>similar to the usage of <code>unsafe</code> in Rust</li>
 <li>enforce the CPS-style let bindings to make variable bindings explicit</li>
 </ul></li>
-</ul></li>
-<li><em>meta</em> level
+<li><em>meta</em> level - enforces that unsafe workarounds are prohibited
 <ul>
-<li>enforces that unsafe workarounds are prohibited</li>
-<li>use Scala Macros  to:
+<li>use Scala Macros 
 <ul>
 <li>disallow certain syntactic patterns when binding to variables</li>
-<li>override the usual behavior of assignments using Scala-Virtualized to confine the aliasing
-<ul>
-<li>only to occur through the facilities introduced by our library</li>
 </ul></li>
+<li>override the behavior of assignments using Scala-Virtualized
+<ul>
+<li>restricts aliasing to occur only via library-provided facilities</li>
 </ul></li>
 </ul></li>
 </ul>
@@ -213,21 +262,17 @@ object Var extends LowPrioMut {
 </div>
 <div class="slide section level1">
 
-<h2 id="bind-functions">Bind functions</h2>
-<p>Idea: use 2nd-class values, annotated with <code>@local</code></p>
+<h2 id="bind-functions-lexical-scoping">Bind functions (lexical scoping)</h2>
+<p>Idea: exploit <strong>2nd-class</strong> values, annotated with <strong><code>@local</code></strong></p>
 <p>Properties:</p>
 <ol style="list-style-type: decimal">
-<li>Cannot be stored in mutable variables (<code>var</code>s)</li>
-<li>Cannot be returned from (member) functions</li>
-<li>Cannot be accessed by 1st-class functions through free variables</li>
+<li>Cannot be <em>stored</em> in mutable variables (<code>var</code>s) or fields</li>
+<li>Cannot be <em>returned</em> from (member) functions</li>
+<li>Cannot be <em>accessed by 1st-class</em> functions through free variables</li>
+<li>(Cannot be <em>coerced to 1st</em>-class; <strong>1st-class <em>can</em> be treated as 2nd-class</strong>.)</li>
 </ol>
-<!-- 1. First-class functions may not refer to second-class values through -->
-<!--    free variables -->
-<!-- 2. All functions must return first-class values -->
-<!-- 3. Only first-class values may be stored in object fields or mutable variables -->
-<!-- 4. First-class can be coerced to second-class values, but not vice-versa -->
 <p> <br />
-<strong>Intuition</strong>: 2nd-class <code>Var[T,A]</code> bindings cannot escape the declaring scope.</p>
+<em>Intuition</em>: 2nd-class <code>Var[T,A]</code> bindings <strong>cannot escape</strong> the declaring scope.</p>
 <p>See also: our OOPSLA'16 paper on <em>Affordable 2nd-Class Values for Fun and Profit</em></p>
 </div>
 <div class="slide section level1">
@@ -273,10 +318,10 @@ bindImm(&quot;foo&quot;) { ref =&gt;
 <ul>
 <li>statically enforce that the argument to <code>bindMut</code>/<code>bindImm</code> are either:
 <ul>
-<li>another <strong>variable</strong></li>
 <li>an <strong>r-value</strong> (e.g. 123, &quot;foo&quot;)</li>
+<li>another <strong>Var</strong>iable (e.g., <code>Var[Int,Imm[Int]]</code>)</li>
 </ul></li>
-<li>done via a syntactic inspection in the wrapper macros <code>letMut</code>/<code>let</code></li>
+<li>done via a <em>syntactic inspection</em> in the <strong>wrapper macros <code>letMut</code>/<code>let</code></strong></li>
 </ul>
 </div>
 <div class="slide section level1">
@@ -291,8 +336,8 @@ bindImm(&quot;foo&quot;) { ref =&gt;
 <ul>
 <li>using Scala-Virtualized, override
 <ul>
-<li><code>__newVar</code> to disallow syntactic forms like <code>var x = ref.value</code></li>
-<li><code>__assign</code> to disallow syntactic forms such as <code>x = ref.value</code></li>
+<li><code>__newVar</code> to disallow syntactic forms like <strong><code>var x = ref.value</code></strong></li>
+<li><code>__assign</code> to disallow syntactic forms such as <strong><code>x = ref.value</code></strong></li>
 </ul></li>
 </ul>
 </div>
@@ -348,7 +393,7 @@ bindMut(new Store()) { storeThatLeaksMutable =&gt;
   bindMut(new StringBuilder()) { sb =&gt;
     val s = call(storeMut)(sb)(storeThatLeaksMutable)
     sb.value.append(&quot;brakes encapsulation&quot;)
-    assert(s == storeThatLeaksMutable.field)  // would fail
+    assert(s == storeThatLeaksMutable.field.toString)  // would fail
   }
 }</code></pre>
 <p><em>Note</em>: the <code>StringBuilder</code> could not be stored <strong>during the borrow</strong>.</p>
@@ -357,19 +402,16 @@ bindMut(new Store()) { storeThatLeaksMutable =&gt;
 <h1>Conclusion</h1>
 <p>We have shown how to:</p>
 <ol style="list-style-type: decimal">
-<li>Use <strong>2nd-class</strong> values in Scala to model key ingredients of borrowing as in Rust</li>
-<li>How to use <strong>macros</strong> (and virtualization) to disallow escape hatches</li>
+<li>Use <strong>2nd-class</strong> values in Scala to model key ingredients of <strong>borrowing</strong> as in Rust</li>
+<li>Use <strong>macros</strong> and virtualized overloads to disallow escape hatches</li>
 <li>Stay context-<strong>insensitive</strong></li>
 </ol>
-</div>
-<div class="slide section level1">
-
 <p> </p>
-<p> </p>
-<p> </p>
-<center>
-Thank you.
-</center>
+<p>Key challenges &amp; solutions:</p>
+<ol style="list-style-type: decimal">
+<li><em>flow sensitivity</em> solved by <strong>monadic style</strong></li>
+<li><em>lifetime of borrowed references</em> solved by <strong>2nd-class</strong> values</li>
+</ol>
 </div>
 </body>
 </html>
